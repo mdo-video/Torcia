@@ -208,7 +208,7 @@ class OverlayService : Service() {
 
         val top = handle(80, 16, 44, 4, Gravity.TOP or Gravity.CENTER_HORIZONTAL)
         top.setOnTouchListener(dragger { _, dy, s ->
-            val nh = (s.h + dy).coerceIn(dp(52f), screenH() - s.b)
+            val nh = (s.h + dy).coerceIn(dp(52f), maxOf(dp(52f), screenH() - s.b - topReserve()))
             hDp = nh / resources.displayMetrics.density
         })
         val left = handle(20, 56, 4, 28, Gravity.START or Gravity.CENTER_VERTICAL)
@@ -312,17 +312,27 @@ class OverlayService : Service() {
         handlePills.forEach { (it.background as GradientDrawable).setColor(hc) }
     }
 
+    private fun topReserve(): Int {
+        val id = resources.getIdentifier("status_bar_height", "dimen", "android")
+        val status = if (id > 0) resources.getDimensionPixelSize(id) else dp(28f)
+        return status + dp(12f)
+    }
+
+    private fun bottomReserve(): Int = dp(24f)
+
     private fun layoutNow() {
         val sw = screenW()
         val sh = screenH()
         val minW = minOf(dp(190f), sw)
         val w = (wF * sw).toInt().coerceIn(minW, sw)
         val x = (xF * sw).toInt().coerceIn(0, sw - w)
-        val h = dp(hDp).coerceIn(minOf(dp(52f), sh), sh)
+        val topRes = topReserve()
+        val botRes = bottomReserve()
+        val h = dp(hDp).coerceIn(minOf(dp(52f), sh), maxOf(dp(52f), sh - topRes - botRes))
         val pw = dp(44f)
         val ph = dp(22f)
         val curH = if (on) h else ph
-        val b = (bF * sh).toInt().coerceIn(0, sh - curH)
+        val b = (bF * sh).toInt().coerceIn(botRes, maxOf(botRes, sh - curH - topRes))
 
         wF = w.toFloat() / sw
         xF = x.toFloat() / sw
