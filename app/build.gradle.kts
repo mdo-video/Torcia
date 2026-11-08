@@ -8,11 +8,20 @@ android {
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "it.mdo.torcia"
+        applicationId = "it.mdo.barraluce"
         minSdk = 26
         targetSdk = 34
         versionCode = 1
         versionName = "1.0"
+    }
+
+    signingConfigs {
+        getByName("debug") {
+            storeFile = file("debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
     }
 
     buildTypes {

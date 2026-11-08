@@ -56,7 +56,7 @@ class OverlayService : Service() {
     private var xF = 0f
     private var wF = 1f
     private var bF = 0f
-    private var hDp = 72f
+    private var hDp = 60f
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -69,7 +69,7 @@ class OverlayService : Service() {
         xF = prefs.getFloat("x", 0f)
         wF = prefs.getFloat("w", 1f)
         bF = prefs.getFloat("b", 0f)
-        hDp = prefs.getFloat("h", 72f)
+        hDp = prefs.getFloat("h", 60f)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -108,7 +108,7 @@ class OverlayService : Service() {
     private fun startAsForeground() {
         val nm = getSystemService(NotificationManager::class.java)
         nm.createNotificationChannel(
-            NotificationChannel(CHANNEL, "Torcia", NotificationManager.IMPORTANCE_LOW)
+            NotificationChannel(CHANNEL, "Barra Luce", NotificationManager.IMPORTANCE_LOW)
         )
         val open = PendingIntent.getActivity(
             this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE
@@ -121,7 +121,7 @@ class OverlayService : Service() {
         @Suppress("DEPRECATION")
         val n = Notification.Builder(this, CHANNEL)
             .setSmallIcon(R.drawable.ic_sun)
-            .setContentTitle("Torcia attiva")
+            .setContentTitle("Barra Luce attiva")
             .setContentText("Tocca per aprire")
             .setContentIntent(open)
             .addAction(0, "Spegni", stop)
@@ -160,21 +160,21 @@ class OverlayService : Service() {
         val cap = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(6f), dp(4f), dp(8f), dp(4f))
+            setPadding(dp(4f), dp(3f), dp(8f), dp(3f))
             background = GradientDrawable().apply {
                 setColor(Color.parseColor("#1A1A19"))
-                cornerRadius = dp(22f).toFloat()
+                cornerRadius = dp(17f).toFloat()
             }
         }
 
-        val power = iconView(R.drawable.ic_power, 34, 5, "#F1EFE8", true)
+        val power = iconView(R.drawable.ic_power, 28, 4, "#F1EFE8", true)
         power.setOnClickListener {
             on = false
             refresh()
             save()
         }
         cap.addView(power)
-        cap.addView(iconView(R.drawable.ic_sun_low, 16, 0, "#B4B2A9", false), gap(16))
+        cap.addView(iconView(R.drawable.ic_sun_low, 14, 0, "#B4B2A9", false), gap(14))
 
         val seek = SeekBar(this).apply {
             max = 90
@@ -194,15 +194,8 @@ class OverlayService : Service() {
                 }
             })
         }
-        cap.addView(seek, LinearLayout.LayoutParams(dp(90f), dp(34f)).apply { marginStart = dp(6f) })
-        cap.addView(iconView(R.drawable.ic_sun, 16, 0, "#B4B2A9", false), gap(16))
-
-        val up = iconView(R.drawable.ic_up, 30, 2, "#F1EFE8", true)
-        up.setOnTouchListener(holdListener(1))
-        cap.addView(up, gap(30))
-        val down = iconView(R.drawable.ic_down, 30, 2, "#F1EFE8", true)
-        down.setOnTouchListener(holdListener(-1))
-        cap.addView(down, gap(30))
+        cap.addView(seek, LinearLayout.LayoutParams(dp(76f), dp(28f)).apply { marginStart = dp(4f) })
+        cap.addView(iconView(R.drawable.ic_sun, 14, 0, "#B4B2A9", false), gap(14))
 
         barGroup.addView(
             cap,
@@ -210,26 +203,26 @@ class OverlayService : Service() {
                 FrameLayout.LayoutParams.WRAP_CONTENT,
                 FrameLayout.LayoutParams.WRAP_CONTENT,
                 Gravity.CENTER
-            ).apply { topMargin = dp(12f) }
+            ).apply { topMargin = dp(8f) }
         )
 
-        val top = handle(80, 22, 44, 5, Gravity.TOP or Gravity.CENTER_HORIZONTAL)
+        val top = handle(80, 16, 44, 4, Gravity.TOP or Gravity.CENTER_HORIZONTAL)
         top.setOnTouchListener(dragger { _, dy, s ->
-            val nh = (s.h + dy).coerceIn(dp(56f), screenH() - s.b)
+            val nh = (s.h + dy).coerceIn(dp(52f), screenH() - s.b)
             hDp = nh / resources.displayMetrics.density
         })
-        val left = handle(20, 64, 5, 36, Gravity.START or Gravity.CENTER_VERTICAL)
+        val left = handle(20, 56, 4, 28, Gravity.START or Gravity.CENTER_VERTICAL)
         left.setOnTouchListener(dragger { dx, _, s ->
             val sw = screenW()
             val right = s.x + s.w
-            val nx = (s.x + dx).coerceIn(0, right - minOf(dp(300f), sw))
+            val nx = (s.x + dx).coerceIn(0, right - minOf(dp(190f), sw))
             xF = nx.toFloat() / sw
             wF = (right - nx).toFloat() / sw
         })
-        val right = handle(20, 64, 5, 36, Gravity.END or Gravity.CENTER_VERTICAL)
+        val right = handle(20, 56, 4, 28, Gravity.END or Gravity.CENTER_VERTICAL)
         right.setOnTouchListener(dragger { dx, _, s ->
             val sw = screenW()
-            val nw = (s.w + dx).coerceIn(minOf(dp(300f), sw), sw - s.x)
+            val nw = (s.w + dx).coerceIn(minOf(dp(190f), sw), sw - s.x)
             wF = nw.toFloat() / sw
         })
 
@@ -242,14 +235,14 @@ class OverlayService : Service() {
             background = GradientDrawable().apply {
                 setColor(Color.parseColor("#1A1A19"))
                 setStroke(dp(1f), Color.parseColor("#5F5E5A"))
-                cornerRadius = dp(14f).toFloat()
+                cornerRadius = dp(11f).toFloat()
             }
             addView(
                 ImageView(context).apply {
                     setImageResource(R.drawable.ic_power)
                     setColorFilter(Color.parseColor("#B4B2A9"))
                 },
-                FrameLayout.LayoutParams(dp(20f), dp(20f), Gravity.CENTER)
+                FrameLayout.LayoutParams(dp(14f), dp(14f), Gravity.CENTER)
             )
             setOnClickListener {
                 on = true
@@ -282,7 +275,7 @@ class OverlayService : Service() {
     }
 
     private fun gap(wDp: Int) =
-        LinearLayout.LayoutParams(dp(wDp.toFloat()), dp(34f)).apply { marginStart = dp(6f) }
+        LinearLayout.LayoutParams(dp(wDp.toFloat()), dp(28f)).apply { marginStart = dp(4f) }
 
     private fun iconView(res: Int, boxDp: Int, padDp: Int, color: String, clickable: Boolean): ImageView {
         val v: ImageView = if (clickable) ImageButton(this) else ImageView(this)
@@ -291,7 +284,7 @@ class OverlayService : Service() {
         v.scaleType = ImageView.ScaleType.FIT_CENTER
         v.setBackgroundColor(Color.TRANSPARENT)
         v.setPadding(dp(padDp.toFloat()), dp(padDp.toFloat()), dp(padDp.toFloat()), dp(padDp.toFloat()))
-        v.layoutParams = LinearLayout.LayoutParams(dp(boxDp.toFloat()), dp(34f))
+        v.layoutParams = LinearLayout.LayoutParams(dp(boxDp.toFloat()), dp(28f))
         return v
     }
 
@@ -322,12 +315,12 @@ class OverlayService : Service() {
     private fun layoutNow() {
         val sw = screenW()
         val sh = screenH()
-        val minW = minOf(dp(300f), sw)
+        val minW = minOf(dp(190f), sw)
         val w = (wF * sw).toInt().coerceIn(minW, sw)
         val x = (xF * sw).toInt().coerceIn(0, sw - w)
-        val h = dp(hDp).coerceIn(minOf(dp(56f), sh), sh)
-        val pw = dp(64f)
-        val ph = dp(28f)
+        val h = dp(hDp).coerceIn(minOf(dp(52f), sh), sh)
+        val pw = dp(44f)
+        val ph = dp(22f)
         val curH = if (on) h else ph
         val b = (bF * sh).toInt().coerceIn(0, sh - curH)
 
@@ -382,36 +375,6 @@ class OverlayService : Service() {
                     refresh()
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> save()
-            }
-            true
-        }
-    }
-
-    private fun step(dir: Int) {
-        bF += dir * dp(6f).toFloat() / screenH()
-        refresh()
-    }
-
-    private fun holdListener(dir: Int): View.OnTouchListener {
-        var runner: Runnable? = null
-        return View.OnTouchListener { _, e ->
-            when (e.actionMasked) {
-                MotionEvent.ACTION_DOWN -> {
-                    step(dir)
-                    val r = object : Runnable {
-                        override fun run() {
-                            step(dir)
-                            handler.postDelayed(this, 40)
-                        }
-                    }
-                    runner = r
-                    handler.postDelayed(r, 250)
-                }
-                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                    runner?.let { handler.removeCallbacks(it) }
-                    runner = null
-                    save()
-                }
             }
             true
         }

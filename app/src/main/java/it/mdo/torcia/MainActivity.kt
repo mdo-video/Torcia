@@ -33,7 +33,7 @@ class MainActivity : Activity() {
         }
 
         col.addView(TextView(this).apply {
-            text = "Torcia"
+            text = "Barra Luce"
             textSize = 30f
             gravity = Gravity.CENTER
         })
@@ -98,7 +98,7 @@ class MainActivity : Activity() {
         val granted = Settings.canDrawOverlays(this)
         val running = OverlayService.running
         perm.visibility = if (granted) android.view.View.GONE else android.view.View.VISIBLE
-        toggle.text = if (running) "Spegni la torcia" else "Accendi la torcia"
+        toggle.text = if (running) "Spegni la barra" else "Accendi la barra"
         status.text = when {
             !granted -> "Serve il permesso per mostrare la barra sopra le altre app."
             running -> "La barra è attiva."
