@@ -5,29 +5,36 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
+import android.content.ComponentName
+import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
 import android.content.pm.ServiceInfo
-import android.content.res.ColorStateList
 import android.content.res.Configuration
 import android.graphics.Color
 import android.graphics.PixelFormat
 import android.graphics.drawable.GradientDrawable
 import android.os.Build
-import android.os.Handler
 import android.os.IBinder
-import android.os.Looper
 import android.provider.Settings
+import android.service.quicksettings.TileService
 import android.util.DisplayMetrics
+import android.view.ContextThemeWrapper
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewGroup
 import android.view.WindowManager
 import android.widget.FrameLayout
-import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.LinearLayout
-import android.widget.SeekBar
+import com.google.android.material.button.MaterialButton
+import com.google.android.material.card.MaterialCardView
+import com.google.android.material.color.DynamicColors
+import com.google.android.material.color.MaterialColors
+import com.google.android.material.slider.LabelFormatter
+import com.google.android.material.slider.Slider
+import kotlin.math.abs
 
 class OverlayService : Service() {
 
@@ -35,7 +42,8 @@ class OverlayService : Service() {
         @Volatile
         var running = false
         const val ACTION_STOP = "it.mdo.torcia.STOP"
-        private const val CHANNEL = "torcia"
+        const val ACTION_TOGGLE = "it.mdo.torcia.TOGGLE"
+        private const val CHANNEL = "barraluce"
         private const val NOTIF_ID = 1
     }
 
@@ -43,7 +51,7 @@ class OverlayService : Service() {
 
     private lateinit var wm: WindowManager
     private lateinit var prefs: SharedPreferences
-    private val handler = Handler(Looper.getMainLooper())
+    private lateinit var ui: Context
 
     private var root: FrameLayout? = null
     private lateinit var lp: WindowManager.LayoutParams
@@ -57,25 +65,34 @@ class OverlayService : Service() {
     private var wF = 1f
     private var bF = 0f
     private var hDp = 60f
+    private var pF = 0.5f
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
         super.onCreate()
         wm = getSystemService(WINDOW_SERVICE) as WindowManager
-        prefs = getSharedPreferences("torcia", MODE_PRIVATE)
+        prefs = getSharedPreferences("barraluce", MODE_PRIVATE)
+        ui = DynamicColors.wrapContextIfAvailable(ContextThemeWrapper(this, R.style.Theme_BarraLuce))
         on = prefs.getBoolean("on", true)
-        dim = prefs.getInt("dim", 100)
+        dim = prefs.getInt("dim", 100).coerceIn(10, 100)
         xF = prefs.getFloat("x", 0f)
         wF = prefs.getFloat("w", 1f)
         bF = prefs.getFloat("b", 0f)
         hDp = prefs.getFloat("h", 60f)
+        pF = prefs.getFloat("p", 0.5f)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent?.action == ACTION_STOP) {
-            stopSelf()
-            return START_NOT_STICKY
+        when (intent?.action) {
+            ACTION_STOP -> {
+                stopSelf()
+                return START_NOT_STICKY
+            }
+            ACTION_TOGGLE -> {
+                if (root != null) setBarOn(!on)
+                return START_STICKY
+            }
         }
         startAsForeground()
         if (!Settings.canDrawOverlays(this)) {
@@ -84,6 +101,7 @@ class OverlayService : Service() {
         }
         if (root == null) buildOverlay()
         running = true
+        TileService.requestListeningState(this, ComponentName(this, BarTileService::class.java))
         return START_STICKY
     }
 
@@ -93,7 +111,6 @@ class OverlayService : Service() {
     }
 
     override fun onDestroy() {
-        handler.removeCallbacksAndMessages(null)
         root?.let {
             try {
                 wm.removeView(it)
@@ -102,6 +119,7 @@ class OverlayService : Service() {
         }
         root = null
         running = false
+        TileService.requestListeningState(this, ComponentName(this, BarTileService::class.java))
         super.onDestroy()
     }
 
@@ -110,28 +128,50 @@ class OverlayService : Service() {
         nm.createNotificationChannel(
             NotificationChannel(CHANNEL, "Barra Luce", NotificationManager.IMPORTANCE_LOW)
         )
-        val open = PendingIntent.getActivity(
-            this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE
-        )
-        val stop = PendingIntent.getService(
-            this, 1,
-            Intent(this, OverlayService::class.java).setAction(ACTION_STOP),
-            PendingIntent.FLAG_IMMUTABLE
-        )
-        @Suppress("DEPRECATION")
-        val n = Notification.Builder(this, CHANNEL)
-            .setSmallIcon(R.drawable.ic_sun)
-            .setContentTitle("Barra Luce attiva")
-            .setContentText("Tocca per aprire")
-            .setContentIntent(open)
-            .addAction(0, "Spegni", stop)
-            .setOngoing(true)
-            .build()
+        val n = buildNotification()
         if (Build.VERSION.SDK_INT >= 34) {
             startForeground(NOTIF_ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
         } else {
             startForeground(NOTIF_ID, n)
         }
+    }
+
+    @Suppress("DEPRECATION")
+    private fun buildNotification(): Notification {
+        val open = PendingIntent.getActivity(
+            this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE
+        )
+        val toggle = PendingIntent.getService(
+            this, 1,
+            Intent(this, OverlayService::class.java).setAction(ACTION_TOGGLE),
+            PendingIntent.FLAG_IMMUTABLE
+        )
+        val stop = PendingIntent.getService(
+            this, 2,
+            Intent(this, OverlayService::class.java).setAction(ACTION_STOP),
+            PendingIntent.FLAG_IMMUTABLE
+        )
+        return Notification.Builder(this, CHANNEL)
+            .setSmallIcon(R.drawable.ic_sun)
+            .setContentTitle("Barra Luce")
+            .setContentText(if (on) "Barra accesa" else "Barra spenta")
+            .setContentIntent(open)
+            .addAction(0, if (on) "Spegni" else "Accendi", toggle)
+            .addAction(0, "Chiudi", stop)
+            .setOngoing(true)
+            .build()
+    }
+
+    private fun updateNotification() {
+        getSystemService(NotificationManager::class.java).notify(NOTIF_ID, buildNotification())
+    }
+
+    private fun setBarOn(v: Boolean) {
+        if (!v) pF = xF + wF / 2f
+        on = v
+        refresh()
+        save()
+        updateNotification()
     }
 
     private fun dp(v: Float): Int = (v * resources.displayMetrics.density).toInt()
@@ -152,50 +192,56 @@ class OverlayService : Service() {
         else realMetrics().heightPixels
 
     private fun buildOverlay() {
-        val r = FrameLayout(this)
+        val r = FrameLayout(ui)
+        val subtle = MaterialColors.getColor(ui, com.google.android.material.R.attr.colorOnSurfaceVariant, Color.GRAY)
 
-        barGroup = FrameLayout(this)
+        barGroup = FrameLayout(ui)
         r.addView(barGroup, FrameLayout.LayoutParams(-1, -1))
 
-        val cap = LinearLayout(this).apply {
+        val cap = MaterialCardView(ui, null, com.google.android.material.R.attr.materialCardViewFilledStyle)
+        cap.radius = dp(18f).toFloat()
+        val row = LinearLayout(ui).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(4f), dp(3f), dp(8f), dp(3f))
-            background = GradientDrawable().apply {
-                setColor(Color.parseColor("#1A1A19"))
-                cornerRadius = dp(17f).toFloat()
+            setPadding(dp(4f), dp(2f), dp(10f), dp(2f))
+        }
+        cap.addView(row, FrameLayout.LayoutParams(-2, -2))
+
+        val power = MaterialButton(ui, null, com.google.android.material.R.attr.materialIconButtonFilledTonalStyle)
+        power.setIconResource(R.drawable.ic_power)
+        power.iconSize = dp(20f)
+        power.iconPadding = 0
+        power.insetTop = 0
+        power.insetBottom = 0
+        power.minWidth = 0
+        power.minHeight = 0
+        power.minimumWidth = 0
+        power.minimumHeight = 0
+        power.setPadding(0, 0, 0, 0)
+        power.setOnClickListener { setBarOn(false) }
+        row.addView(power, LinearLayout.LayoutParams(dp(36f), dp(36f)))
+
+        row.addView(sunIcon(R.drawable.ic_sun_low, subtle), sunParams())
+
+        val slider = Slider(ui)
+        slider.valueFrom = 10f
+        slider.valueTo = 100f
+        slider.stepSize = 1f
+        slider.value = dim.toFloat()
+        slider.labelBehavior = LabelFormatter.LABEL_GONE
+        slider.addOnChangeListener(Slider.OnChangeListener { _, v, _ ->
+            dim = v.toInt()
+            applyColors()
+        })
+        slider.addOnSliderTouchListener(object : Slider.OnSliderTouchListener {
+            override fun onStartTrackingTouch(s: Slider) {}
+            override fun onStopTrackingTouch(s: Slider) {
+                save()
             }
-        }
+        })
+        row.addView(slider, LinearLayout.LayoutParams(dp(112f), dp(36f)))
 
-        val power = iconView(R.drawable.ic_power, 28, 4, "#F1EFE8", true)
-        power.setOnClickListener {
-            on = false
-            refresh()
-            save()
-        }
-        cap.addView(power)
-        cap.addView(iconView(R.drawable.ic_sun_low, 14, 0, "#B4B2A9", false), gap(14))
-
-        val seek = SeekBar(this).apply {
-            max = 90
-            progress = dim - 10
-            progressTintList = ColorStateList.valueOf(Color.parseColor("#F1EFE8"))
-            thumbTintList = ColorStateList.valueOf(Color.parseColor("#F1EFE8"))
-            setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-                override fun onProgressChanged(sb: SeekBar?, p: Int, fromUser: Boolean) {
-                    dim = p + 10
-                    applyColors()
-                }
-
-                override fun onStartTrackingTouch(sb: SeekBar?) {}
-
-                override fun onStopTrackingTouch(sb: SeekBar?) {
-                    save()
-                }
-            })
-        }
-        cap.addView(seek, LinearLayout.LayoutParams(dp(76f), dp(28f)).apply { marginStart = dp(4f) })
-        cap.addView(iconView(R.drawable.ic_sun, 14, 0, "#B4B2A9", false), gap(14))
+        row.addView(sunIcon(R.drawable.ic_sun, subtle), sunParams())
 
         barGroup.addView(
             cap,
@@ -214,10 +260,10 @@ class OverlayService : Service() {
         val left = handle(20, 56, 4, 28, Gravity.START or Gravity.CENTER_VERTICAL)
         left.setOnTouchListener(dragger { dx, _, s ->
             val sw = screenW()
-            val right = s.x + s.w
-            val nx = (s.x + dx).coerceIn(0, right - minOf(dp(190f), sw))
+            val rightEdge = s.x + s.w
+            val nx = (s.x + dx).coerceIn(0, rightEdge - minOf(dp(190f), sw))
             xF = nx.toFloat() / sw
-            wF = (right - nx).toFloat() / sw
+            wF = (rightEdge - nx).toFloat() / sw
         })
         val right = handle(20, 56, 4, 28, Gravity.END or Gravity.CENTER_VERTICAL)
         right.setOnTouchListener(dragger { dx, _, s ->
@@ -231,25 +277,17 @@ class OverlayService : Service() {
             bF = (s.b + dy).toFloat() / screenH()
         })
 
-        pill = FrameLayout(this).apply {
-            background = GradientDrawable().apply {
-                setColor(Color.parseColor("#1A1A19"))
-                setStroke(dp(1f), Color.parseColor("#5F5E5A"))
-                cornerRadius = dp(11f).toFloat()
-            }
-            addView(
-                ImageView(context).apply {
-                    setImageResource(R.drawable.ic_power)
-                    setColorFilter(Color.parseColor("#B4B2A9"))
-                },
-                FrameLayout.LayoutParams(dp(14f), dp(14f), Gravity.CENTER)
-            )
-            setOnClickListener {
-                on = true
-                refresh()
-                save()
-            }
-        }
+        val pillCard = MaterialCardView(ui, null, com.google.android.material.R.attr.materialCardViewFilledStyle)
+        pillCard.radius = dp(11f).toFloat()
+        pillCard.addView(
+            ImageView(ui).apply {
+                setImageResource(R.drawable.ic_power)
+                setColorFilter(subtle)
+            },
+            FrameLayout.LayoutParams(dp(14f), dp(14f), Gravity.CENTER)
+        )
+        pillCard.setOnTouchListener(pillTouch())
+        pill = pillCard
         r.addView(pill, FrameLayout.LayoutParams(-1, -1))
 
         lp = WindowManager.LayoutParams(
@@ -274,23 +312,20 @@ class OverlayService : Service() {
         wm.addView(r, lp)
     }
 
-    private fun gap(wDp: Int) =
-        LinearLayout.LayoutParams(dp(wDp.toFloat()), dp(28f)).apply { marginStart = dp(4f) }
+    private fun sunParams() =
+        LinearLayout.LayoutParams(dp(14f), dp(28f)).apply { marginStart = dp(4f) }
 
-    private fun iconView(res: Int, boxDp: Int, padDp: Int, color: String, clickable: Boolean): ImageView {
-        val v: ImageView = if (clickable) ImageButton(this) else ImageView(this)
+    private fun sunIcon(res: Int, color: Int): ImageView {
+        val v = ImageView(ui)
         v.setImageResource(res)
-        v.setColorFilter(Color.parseColor(color))
+        v.setColorFilter(color)
         v.scaleType = ImageView.ScaleType.FIT_CENTER
-        v.setBackgroundColor(Color.TRANSPARENT)
-        v.setPadding(dp(padDp.toFloat()), dp(padDp.toFloat()), dp(padDp.toFloat()), dp(padDp.toFloat()))
-        v.layoutParams = LinearLayout.LayoutParams(dp(boxDp.toFloat()), dp(28f))
         return v
     }
 
     private fun handle(wDp: Int, hDpBox: Int, pw: Int, ph: Int, gravity: Int): FrameLayout {
-        val f = FrameLayout(this)
-        val p = View(this).apply {
+        val f = FrameLayout(ui)
+        val p = View(ui).apply {
             background = GradientDrawable().apply {
                 setColor(Color.parseColor("#1A1A19"))
                 cornerRadius = dp(3f).toFloat()
@@ -333,15 +368,17 @@ class OverlayService : Service() {
         val ph = dp(22f)
         val curH = if (on) h else ph
         val b = (bF * sh).toInt().coerceIn(botRes, maxOf(botRes, sh - curH - topRes))
+        val px = ((pF * sw).toInt() - pw / 2).coerceIn(0, sw - pw)
 
         wF = w.toFloat() / sw
         xF = x.toFloat() / sw
         bF = b.toFloat() / sh
+        pF = (px + pw / 2).toFloat() / sw
         hDp = h / resources.displayMetrics.density
 
         lp.width = if (on) w else pw
         lp.height = curH
-        lp.x = if (on) x else x + w / 2 - pw / 2
+        lp.x = if (on) x else px
         lp.y = sh - b - curH
         barGroup.visibility = if (on) View.VISIBLE else View.GONE
         pill.visibility = if (on) View.GONE else View.VISIBLE
@@ -360,6 +397,7 @@ class OverlayService : Service() {
             .putFloat("w", wF)
             .putFloat("b", bF)
             .putFloat("h", hDp)
+            .putFloat("p", pF)
             .apply()
     }
 
@@ -385,6 +423,40 @@ class OverlayService : Service() {
                     refresh()
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> save()
+            }
+            true
+        }
+    }
+
+    private fun pillTouch(): View.OnTouchListener {
+        var sx = 0f
+        var sy = 0f
+        var p0 = 0f
+        var b0 = 0f
+        var moved = false
+        return View.OnTouchListener { _, e ->
+            when (e.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    sx = e.rawX
+                    sy = e.rawY
+                    p0 = pF
+                    b0 = bF
+                    moved = false
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    val dx = e.rawX - sx
+                    val dy = sy - e.rawY
+                    if (!moved && (abs(dx) > dp(8f) || abs(dy) > dp(8f))) moved = true
+                    if (moved) {
+                        pF = p0 + dx / screenW()
+                        bF = b0 + dy / screenH()
+                        refresh()
+                    }
+                }
+                MotionEvent.ACTION_UP -> {
+                    if (!moved) setBarOn(true) else save()
+                }
+                MotionEvent.ACTION_CANCEL -> save()
             }
             true
         }

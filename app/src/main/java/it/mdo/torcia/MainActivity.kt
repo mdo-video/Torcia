@@ -1,9 +1,11 @@
 package it.mdo.torcia
 
 import android.Manifest
-import android.app.Activity
+import android.app.StatusBarManager
+import android.content.ComponentName
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.drawable.Icon
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -11,20 +13,25 @@ import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
 import android.view.Gravity
-import android.widget.Button
+import android.view.View
 import android.widget.LinearLayout
-import android.widget.TextView
+import android.widget.Toast
+import androidx.appcompat.app.AppCompatActivity
+import com.google.android.material.button.MaterialButton
+import com.google.android.material.textview.MaterialTextView
 
-class MainActivity : Activity() {
+class MainActivity : AppCompatActivity() {
 
-    private lateinit var status: TextView
-    private lateinit var perm: Button
-    private lateinit var toggle: Button
+    private lateinit var status: MaterialTextView
+    private lateinit var perm: MaterialButton
+    private lateinit var toggle: MaterialButton
     private val handler = Handler(Looper.getMainLooper())
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val pad = (24 * resources.displayMetrics.density).toInt()
+        val d = resources.displayMetrics.density
+        val pad = (24 * d).toInt()
+        val gap = (12 * d).toInt()
 
         val col = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -32,41 +39,72 @@ class MainActivity : Activity() {
             setPadding(pad, pad * 2, pad, pad)
         }
 
-        col.addView(TextView(this).apply {
+        col.addView(MaterialTextView(this).apply {
             text = "Barra Luce"
-            textSize = 30f
+            setTextAppearance(com.google.android.material.R.style.TextAppearance_Material3_HeadlineLarge)
             gravity = Gravity.CENTER
         })
-        col.addView(TextView(this).apply {
+        col.addView(MaterialTextView(this).apply {
             text = "Una barra luminosa sopra le altre app. Regola altezza, larghezza e posizione con le maniglie; acceso/spento e dimmer sono dentro la barra."
-            textSize = 16f
+            setTextAppearance(com.google.android.material.R.style.TextAppearance_Material3_BodyLarge)
             gravity = Gravity.CENTER
-            setPadding(0, pad / 2, 0, pad)
+            setPadding(0, gap, 0, pad)
         })
-        status = TextView(this).apply {
-            textSize = 16f
+        status = MaterialTextView(this).apply {
+            setTextAppearance(com.google.android.material.R.style.TextAppearance_Material3_TitleMedium)
             gravity = Gravity.CENTER
             setPadding(0, 0, 0, pad)
         }
         col.addView(status)
 
-        perm = Button(this).apply {
+        perm = MaterialButton(this, null, com.google.android.material.R.attr.materialButtonOutlinedStyle).apply {
             text = "Concedi il permesso sopra le altre app"
             setOnClickListener { openPermissionScreen() }
         }
-        col.addView(perm)
+        col.addView(perm, buttonParams(gap))
 
-        toggle = Button(this).apply {
+        val tile = MaterialButton(this, null, com.google.android.material.R.attr.materialButtonOutlinedStyle).apply {
+            text = "Aggiungi ai toggle rapidi"
+            setOnClickListener { addTile() }
+        }
+        col.addView(tile, buttonParams(gap))
+
+        toggle = MaterialButton(this).apply {
             setOnClickListener { onToggle() }
         }
-        col.addView(toggle)
+        col.addView(toggle, buttonParams(gap))
 
         setContentView(col)
     }
 
+    private fun buttonParams(gap: Int) =
+        LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+            .apply { topMargin = gap }
+
     override fun onResume() {
         super.onResume()
         refresh()
+    }
+
+    private fun addTile() {
+        if (Build.VERSION.SDK_INT >= 33) {
+            try {
+                getSystemService(StatusBarManager::class.java).requestAddTileService(
+                    ComponentName(this, BarTileService::class.java),
+                    "Barra Luce",
+                    Icon.createWithResource(this, R.drawable.ic_sun),
+                    mainExecutor,
+                    java.util.function.Consumer<Int> { }
+                )
+                return
+            } catch (_: Exception) {
+            }
+        }
+        Toast.makeText(
+            this,
+            "Apri i toggle rapidi, tocca la matita e trascina Barra Luce tra i tasti attivi.",
+            Toast.LENGTH_LONG
+        ).show()
     }
 
     private fun openPermissionScreen() {
@@ -97,7 +135,7 @@ class MainActivity : Activity() {
     private fun refresh() {
         val granted = Settings.canDrawOverlays(this)
         val running = OverlayService.running
-        perm.visibility = if (granted) android.view.View.GONE else android.view.View.VISIBLE
+        perm.visibility = if (granted) View.GONE else View.VISIBLE
         toggle.text = if (running) "Spegni la barra" else "Accendi la barra"
         status.text = when {
             !granted -> "Serve il permesso per mostrare la barra sopra le altre app."
