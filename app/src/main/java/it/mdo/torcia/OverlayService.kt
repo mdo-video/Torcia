@@ -15,7 +15,9 @@ import android.graphics.Color
 import android.graphics.PixelFormat
 import android.graphics.drawable.GradientDrawable
 import android.os.Build
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.provider.Settings
 import android.service.quicksettings.TileService
 import android.util.DisplayMetrics
@@ -47,6 +49,9 @@ class OverlayService : Service() {
         const val ACTION_TOGGLE = "it.mdo.torcia.TOGGLE"
         private const val CHANNEL = "barraluce"
         private const val NOTIF_ID = 1
+        private const val FADE = 0.55f
+        private val TONES = intArrayOf(Color.rgb(255, 212, 160), Color.WHITE, Color.rgb(255, 51, 0))
+        private const val FADE_DELAY = 2500L
     }
 
     private class Snap(val x: Int, val w: Int, val b: Int, val h: Int)
@@ -60,10 +65,19 @@ class OverlayService : Service() {
     private lateinit var barGroup: FrameLayout
     private lateinit var pill: FrameLayout
     private val handlePills = ArrayList<View>()
+    private val handleFrames = ArrayList<View>()
+    private var capView: View? = null
+    private val handler = Handler(Looper.getMainLooper())
+    private val fadeRunnable = Runnable {
+        capView?.animate()?.alpha(FADE)?.setDuration(400)?.start()
+        handleFrames.forEach { it.animate().alpha(FADE).setDuration(400).start() }
+    }
 
     private var on = true
     private var dim = 100
     private var op = 100
+    private var tone = 0
+    private var toneChip: View? = null
     private var xF = 0f
     private var wF = 1f
     private var bF = 0f
@@ -81,6 +95,7 @@ class OverlayService : Service() {
         on = prefs.getBoolean("on", true)
         dim = prefs.getInt("dim", 100).coerceIn(10, 100)
         op = prefs.getInt("op", 100).coerceIn(10, 100)
+        tone = prefs.getInt("tone", 0).coerceIn(0, 2)
         xF = prefs.getFloat("x", 0f)
         wF = prefs.getFloat("w", 1f)
         bF = prefs.getFloat("b", 0f)
@@ -117,6 +132,7 @@ class OverlayService : Service() {
     }
 
     override fun onDestroy() {
+        handler.removeCallbacksAndMessages(null)
         root?.let {
             try {
                 wm.removeView(it)
@@ -181,8 +197,21 @@ class OverlayService : Service() {
     private fun setBarOn(v: Boolean) {
         on = v
         refresh()
+        if (v) wake()
         save()
         updateNotification()
+    }
+
+    private fun wake() {
+        val c = capView ?: return
+        handler.removeCallbacks(fadeRunnable)
+        c.animate().cancel()
+        c.alpha = 1f
+        handleFrames.forEach {
+            it.animate().cancel()
+            it.alpha = 1f
+        }
+        handler.postDelayed(fadeRunnable, FADE_DELAY)
     }
 
     private fun dp(v: Float): Int = (v * resources.displayMetrics.density).toInt()
@@ -206,10 +235,16 @@ class OverlayService : Service() {
         val r = FrameLayout(ui)
         val subtle = MaterialColors.getColor(ui, com.google.android.material.R.attr.colorOnSurfaceVariant, Color.GRAY)
 
-        barGroup = FrameLayout(ui)
+        barGroup = object : FrameLayout(ui) {
+            override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
+                wake()
+                return super.dispatchTouchEvent(ev)
+            }
+        }
         r.addView(barGroup, FrameLayout.LayoutParams(-1, -1))
 
         val cap = MaterialCardView(ui, null, com.google.android.material.R.attr.materialCardViewFilledStyle)
+        capView = cap
         cap.shapeAppearanceModel = ShapeAppearanceModel.builder().setAllCornerSizes(ShapeAppearanceModel.PILL).build()
         val row = LinearLayout(ui).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -218,18 +253,23 @@ class OverlayService : Service() {
         }
         cap.addView(row, FrameLayout.LayoutParams(-2, -2))
 
-        val power = MaterialButton(ui, null, com.google.android.material.R.attr.materialIconButtonFilledTonalStyle)
-        power.setIconResource(R.drawable.ic_power)
-        power.iconSize = dp(20f)
-        power.iconPadding = 0
-        power.insetTop = 0
-        power.insetBottom = 0
-        power.minWidth = 0
-        power.minHeight = 0
-        power.minimumWidth = 0
-        power.minimumHeight = 0
-        power.setPadding(0, 0, 0, 0)
-        power.setOnClickListener { setBarOn(false) }
+        val secContainer = MaterialColors.getColor(ui, com.google.android.material.R.attr.colorSecondaryContainer, Color.DKGRAY)
+        val onSecContainer = MaterialColors.getColor(ui, com.google.android.material.R.attr.colorOnSecondaryContainer, Color.WHITE)
+        val power = FrameLayout(ui).apply {
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setColor(secContainer)
+            }
+            isClickable = true
+            addView(
+                ImageView(ui).apply {
+                    setImageResource(R.drawable.ic_power)
+                    setColorFilter(onSecContainer)
+                },
+                FrameLayout.LayoutParams(dp(20f), dp(20f), Gravity.CENTER)
+            )
+            setOnClickListener { setBarOn(false) }
+        }
         row.addView(power, LinearLayout.LayoutParams(dp(36f), dp(36f)))
 
         row.addView(sunIcon(R.drawable.ic_sun_low, subtle), iconParams(8f))
@@ -250,6 +290,22 @@ class OverlayService : Service() {
             LinearLayout.LayoutParams(dp(120f), dp(40f))
         )
 
+        val chip = FrameLayout(ui).apply {
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setColor(TONES[tone])
+                setStroke(dp(2f), subtle)
+            }
+            isClickable = true
+            setOnClickListener {
+                tone = (tone + 1) % TONES.size
+                applyColors()
+                save()
+            }
+        }
+        toneChip = chip
+        row.addView(chip, LinearLayout.LayoutParams(dp(28f), dp(28f)).apply { marginStart = dp(12f) })
+
         barGroup.addView(
             cap,
             FrameLayout.LayoutParams(
@@ -268,14 +324,14 @@ class OverlayService : Service() {
         left.setOnTouchListener(dragger { dx, _, s ->
             val sw = screenW()
             val rightEdge = s.x + s.w
-            val nx = (s.x + dx).coerceIn(0, rightEdge - minOf(dp(420f), sw))
+            val nx = (s.x + dx).coerceIn(0, rightEdge - minOf(dp(470f), sw))
             xF = nx.toFloat() / sw
             wF = (rightEdge - nx).toFloat() / sw
         })
         val right = handle(20, 56, 4, 28, Gravity.END or Gravity.CENTER_VERTICAL)
         right.setOnTouchListener(dragger { dx, _, s ->
             val sw = screenW()
-            val nw = (s.w + dx).coerceIn(minOf(dp(420f), sw), sw - s.x)
+            val nw = (s.w + dx).coerceIn(minOf(dp(470f), sw), sw - s.x)
             wF = nw.toFloat() / sw
         })
 
@@ -317,6 +373,7 @@ class OverlayService : Service() {
         layoutNow()
         root = r
         wm.addView(r, lp)
+        wake()
     }
 
     private fun iconParams(startDp: Float) =
@@ -367,6 +424,7 @@ class OverlayService : Service() {
         }
         f.addView(p, FrameLayout.LayoutParams(dp(pw.toFloat()), dp(ph.toFloat()), Gravity.CENTER))
         handlePills.add(p)
+        handleFrames.add(f)
         barGroup.addView(
             f,
             FrameLayout.LayoutParams(dp(wDp.toFloat()), dp(hDpBox.toFloat()), gravity)
@@ -375,11 +433,17 @@ class OverlayService : Service() {
     }
 
     private fun applyColors() {
-        val v = (dim * 2.55f).toInt().coerceIn(0, 255)
+        val base = TONES[tone]
+        val k = dim / 100f
+        val rr = (Color.red(base) * k).toInt()
+        val gg = (Color.green(base) * k).toInt()
+        val bb = (Color.blue(base) * k).toInt()
         val a = (op * 2.55f).toInt().coerceIn(0, 255)
-        barGroup.setBackgroundColor(Color.argb(a, v, v, v))
-        val hc = if (dim > 40) Color.parseColor("#1A1A19") else Color.parseColor("#888780")
+        barGroup.setBackgroundColor(Color.argb(a, rr, gg, bb))
+        val lum = 0.299f * rr + 0.587f * gg + 0.114f * bb
+        val hc = if (lum > 100f) Color.parseColor("#1A1A19") else Color.parseColor("#888780")
         handlePills.forEach { (it.background as GradientDrawable).setColor(hc) }
+        (toneChip?.background as? GradientDrawable)?.setColor(base)
     }
 
     private fun topReserve(): Int {
@@ -393,7 +457,7 @@ class OverlayService : Service() {
     private fun layoutNow() {
         val sw = screenW()
         val sh = screenH()
-        val minW = minOf(dp(420f), sw)
+        val minW = minOf(dp(470f), sw)
         val w = (wF * sw).toInt().coerceIn(minW, sw)
         val x = (xF * sw).toInt().coerceIn(0, sw - w)
         val topRes = topReserve()
@@ -431,6 +495,7 @@ class OverlayService : Service() {
             .putBoolean("on", on)
             .putInt("dim", dim)
             .putInt("op", op)
+            .putInt("tone", tone)
             .putFloat("x", xF)
             .putFloat("w", wF)
             .putFloat("b", bF)
