@@ -61,10 +61,11 @@ class OverlayService : Service() {
 
     private var on = true
     private var dim = 100
+    private var op = 100
     private var xF = 0f
     private var wF = 1f
     private var bF = 0f
-    private var hDp = 60f
+    private var hDp = 72f
     private var pF = 0.5f
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -76,10 +77,11 @@ class OverlayService : Service() {
         ui = DynamicColors.wrapContextIfAvailable(ContextThemeWrapper(this, R.style.Theme_BarraLuce))
         on = prefs.getBoolean("on", true)
         dim = prefs.getInt("dim", 100).coerceIn(10, 100)
+        op = prefs.getInt("op", 100).coerceIn(10, 100)
         xF = prefs.getFloat("x", 0f)
         wF = prefs.getFloat("w", 1f)
         bF = prefs.getFloat("b", 0f)
-        hDp = prefs.getFloat("h", 60f)
+        hDp = prefs.getFloat("h", 72f)
         pF = prefs.getFloat("p", 0.5f)
     }
 
@@ -203,7 +205,7 @@ class OverlayService : Service() {
         val row = LinearLayout(ui).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(4f), dp(2f), dp(10f), dp(2f))
+            setPadding(dp(6f), dp(4f), dp(6f), dp(4f))
         }
         cap.addView(row, FrameLayout.LayoutParams(-2, -2))
 
@@ -221,29 +223,23 @@ class OverlayService : Service() {
         power.setOnClickListener { setBarOn(false) }
         row.addView(power, LinearLayout.LayoutParams(dp(36f), dp(36f)))
 
-        row.addView(sunIcon(R.drawable.ic_sun_low, subtle), sunParams())
-
-        val slider = Slider(ui)
-        slider.valueFrom = 10f
-        slider.valueTo = 100f
-        slider.stepSize = 1f
-        slider.value = dim.toFloat()
-        slider.labelBehavior = LabelFormatter.LABEL_GONE
-        slider.isTickVisible = false
-        slider.trackHeight = dp(10f)
-        slider.addOnChangeListener(Slider.OnChangeListener { _, v, _ ->
-            dim = v.toInt()
-            applyColors()
-        })
-        slider.addOnSliderTouchListener(object : Slider.OnSliderTouchListener {
-            override fun onStartTrackingTouch(s: Slider) {}
-            override fun onStopTrackingTouch(s: Slider) {
-                save()
-            }
-        })
-        row.addView(slider, LinearLayout.LayoutParams(dp(112f), dp(36f)))
-
-        row.addView(sunIcon(R.drawable.ic_sun, subtle), sunParams())
+        row.addView(sunIcon(R.drawable.ic_sun_low, subtle), iconParams(8f))
+        row.addView(
+            makeSlider(dim.toFloat()) {
+                dim = it
+                applyColors()
+            },
+            LinearLayout.LayoutParams(dp(120f), dp(36f))
+        )
+        row.addView(sunIcon(R.drawable.ic_sun, subtle), iconParams(0f))
+        row.addView(sunIcon(R.drawable.ic_opacity, subtle), iconParams(12f))
+        row.addView(
+            makeSlider(op.toFloat()) {
+                op = it
+                applyColors()
+            },
+            LinearLayout.LayoutParams(dp(120f), dp(36f))
+        )
 
         barGroup.addView(
             cap,
@@ -256,21 +252,21 @@ class OverlayService : Service() {
 
         val top = handle(80, 16, 44, 4, Gravity.TOP or Gravity.CENTER_HORIZONTAL)
         top.setOnTouchListener(dragger { _, dy, s ->
-            val nh = (s.h + dy).coerceIn(dp(52f), maxOf(dp(52f), screenH() - s.b - topReserve()))
+            val nh = (s.h + dy).coerceIn(dp(64f), maxOf(dp(64f), screenH() - s.b - topReserve()))
             hDp = nh / resources.displayMetrics.density
         })
         val left = handle(20, 56, 4, 28, Gravity.START or Gravity.CENTER_VERTICAL)
         left.setOnTouchListener(dragger { dx, _, s ->
             val sw = screenW()
             val rightEdge = s.x + s.w
-            val nx = (s.x + dx).coerceIn(0, rightEdge - minOf(dp(190f), sw))
+            val nx = (s.x + dx).coerceIn(0, rightEdge - minOf(dp(420f), sw))
             xF = nx.toFloat() / sw
             wF = (rightEdge - nx).toFloat() / sw
         })
         val right = handle(20, 56, 4, 28, Gravity.END or Gravity.CENTER_VERTICAL)
         right.setOnTouchListener(dragger { dx, _, s ->
             val sw = screenW()
-            val nw = (s.w + dx).coerceIn(minOf(dp(190f), sw), sw - s.x)
+            val nw = (s.w + dx).coerceIn(minOf(dp(420f), sw), sw - s.x)
             wF = nw.toFloat() / sw
         })
 
@@ -314,8 +310,27 @@ class OverlayService : Service() {
         wm.addView(r, lp)
     }
 
-    private fun sunParams() =
-        LinearLayout.LayoutParams(dp(14f), dp(28f)).apply { marginStart = dp(4f) }
+    private fun iconParams(startDp: Float) =
+        LinearLayout.LayoutParams(dp(18f), dp(28f)).apply { marginStart = dp(startDp) }
+
+    private fun makeSlider(start: Float, onValue: (Int) -> Unit): Slider {
+        val sl = Slider(ui)
+        sl.valueFrom = 10f
+        sl.valueTo = 100f
+        sl.stepSize = 1f
+        sl.value = start
+        sl.labelBehavior = LabelFormatter.LABEL_GONE
+        sl.isTickVisible = false
+        sl.trackHeight = dp(10f)
+        sl.addOnChangeListener(Slider.OnChangeListener { _, v, _ -> onValue(v.toInt()) })
+        sl.addOnSliderTouchListener(object : Slider.OnSliderTouchListener {
+            override fun onStartTrackingTouch(x: Slider) {}
+            override fun onStopTrackingTouch(x: Slider) {
+                save()
+            }
+        })
+        return sl
+    }
 
     private fun sunIcon(res: Int, color: Int): ImageView {
         val v = ImageView(ui)
@@ -344,7 +359,8 @@ class OverlayService : Service() {
 
     private fun applyColors() {
         val v = (dim * 2.55f).toInt().coerceIn(0, 255)
-        barGroup.setBackgroundColor(Color.rgb(v, v, v))
+        val a = (op * 2.55f).toInt().coerceIn(0, 255)
+        barGroup.setBackgroundColor(Color.argb(a, v, v, v))
         val hc = if (dim > 40) Color.parseColor("#1A1A19") else Color.parseColor("#888780")
         handlePills.forEach { (it.background as GradientDrawable).setColor(hc) }
     }
@@ -360,12 +376,12 @@ class OverlayService : Service() {
     private fun layoutNow() {
         val sw = screenW()
         val sh = screenH()
-        val minW = minOf(dp(190f), sw)
+        val minW = minOf(dp(420f), sw)
         val w = (wF * sw).toInt().coerceIn(minW, sw)
         val x = (xF * sw).toInt().coerceIn(0, sw - w)
         val topRes = topReserve()
         val botRes = bottomReserve()
-        val h = dp(hDp).coerceIn(minOf(dp(52f), sh), maxOf(dp(52f), sh - topRes - botRes))
+        val h = dp(hDp).coerceIn(minOf(dp(64f), sh), maxOf(dp(64f), sh - topRes - botRes))
         val pw = dp(44f)
         val ph = dp(22f)
         val curH = if (on) h else ph
@@ -395,6 +411,7 @@ class OverlayService : Service() {
         prefs.edit()
             .putBoolean("on", on)
             .putInt("dim", dim)
+            .putInt("op", op)
             .putFloat("x", xF)
             .putFloat("w", wF)
             .putFloat("b", bF)

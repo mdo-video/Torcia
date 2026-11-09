@@ -45,7 +45,7 @@ class MainActivity : AppCompatActivity() {
             gravity = Gravity.CENTER
         })
         col.addView(MaterialTextView(this).apply {
-            text = "Una barra luminosa sopra le altre app. Regola altezza, larghezza e posizione con le maniglie; acceso/spento e dimmer sono dentro la barra."
+            text = "Una barra luminosa sopra le altre app. Regola altezza, larghezza e posizione con le maniglie; acceso/spento, dimmer e trasparenza sono dentro la barra."
             setTextAppearance(com.google.android.material.R.style.TextAppearance_Material3_BodyLarge)
             gravity = Gravity.CENTER
             setPadding(0, gap, 0, pad)
