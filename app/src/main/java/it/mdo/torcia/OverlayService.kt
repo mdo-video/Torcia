@@ -229,6 +229,8 @@ class OverlayService : Service() {
         slider.stepSize = 1f
         slider.value = dim.toFloat()
         slider.labelBehavior = LabelFormatter.LABEL_GONE
+        slider.isTickVisible = false
+        slider.trackHeight = dp(10f)
         slider.addOnChangeListener(Slider.OnChangeListener { _, v, _ ->
             dim = v.toInt()
             applyColors()
