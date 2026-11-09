@@ -28,6 +28,7 @@ import android.view.WindowManager
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.RemoteViews
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.card.MaterialCardView
 import com.google.android.material.color.DynamicColors
@@ -67,6 +68,7 @@ class OverlayService : Service() {
     private var bF = 0f
     private var hDp = 72f
     private var pF = 0.5f
+    private var qF = 0.1f
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -83,6 +85,7 @@ class OverlayService : Service() {
         bF = prefs.getFloat("b", 0f)
         hDp = prefs.getFloat("h", 72f)
         pF = prefs.getFloat("p", 0.5f)
+        qF = prefs.getFloat("q", 0.1f)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -153,13 +156,19 @@ class OverlayService : Service() {
             Intent(this, OverlayService::class.java).setAction(ACTION_STOP),
             PendingIntent.FLAG_IMMUTABLE
         )
+        val rv = RemoteViews(packageName, R.layout.notif_collapsed)
+        rv.setTextViewText(R.id.n_text, if (on) "Barra accesa" else "Barra spenta")
+        rv.setTextViewText(R.id.n_toggle, if (on) "Spegni" else "Accendi")
+        rv.setTextViewText(R.id.n_close, "Chiudi")
+        rv.setOnClickPendingIntent(R.id.n_toggle, toggle)
+        rv.setOnClickPendingIntent(R.id.n_close, stop)
         return Notification.Builder(this, CHANNEL)
             .setSmallIcon(R.drawable.ic_sun)
             .setContentTitle("Barra Luce")
             .setContentText(if (on) "Barra accesa" else "Barra spenta")
             .setContentIntent(open)
-            .addAction(0, if (on) "Spegni" else "Accendi", toggle)
-            .addAction(0, "Chiudi", stop)
+            .setStyle(Notification.DecoratedCustomViewStyle())
+            .setCustomContentView(rv)
             .setOngoing(true)
             .build()
     }
@@ -169,7 +178,6 @@ class OverlayService : Service() {
     }
 
     private fun setBarOn(v: Boolean) {
-        if (!v) pF = xF + wF / 2f
         on = v
         refresh()
         save()
@@ -201,11 +209,11 @@ class OverlayService : Service() {
         r.addView(barGroup, FrameLayout.LayoutParams(-1, -1))
 
         val cap = MaterialCardView(ui, null, com.google.android.material.R.attr.materialCardViewFilledStyle)
-        cap.radius = dp(18f).toFloat()
+        cap.radius = dp(22f).toFloat()
         val row = LinearLayout(ui).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(6f), dp(4f), dp(6f), dp(4f))
+            setPadding(dp(4f), dp(4f), dp(12f), dp(4f))
         }
         cap.addView(row, FrameLayout.LayoutParams(-2, -2))
 
@@ -276,13 +284,13 @@ class OverlayService : Service() {
         })
 
         val pillCard = MaterialCardView(ui, null, com.google.android.material.R.attr.materialCardViewFilledStyle)
-        pillCard.radius = dp(11f).toFloat()
+        pillCard.radius = dp(18f).toFloat()
         pillCard.addView(
             ImageView(ui).apply {
                 setImageResource(R.drawable.ic_power)
                 setColorFilter(subtle)
             },
-            FrameLayout.LayoutParams(dp(14f), dp(14f), Gravity.CENTER)
+            FrameLayout.LayoutParams(dp(18f), dp(18f), Gravity.CENTER)
         )
         pillCard.setOnTouchListener(pillTouch())
         pill = pillCard
@@ -382,22 +390,24 @@ class OverlayService : Service() {
         val topRes = topReserve()
         val botRes = bottomReserve()
         val h = dp(hDp).coerceIn(minOf(dp(64f), sh), maxOf(dp(64f), sh - topRes - botRes))
-        val pw = dp(44f)
-        val ph = dp(22f)
+        val pw = dp(36f)
+        val ph = dp(36f)
         val curH = if (on) h else ph
-        val b = (bF * sh).toInt().coerceIn(botRes, maxOf(botRes, sh - curH - topRes))
+        val b = (bF * sh).toInt().coerceIn(botRes, maxOf(botRes, sh - h - topRes))
+        val q = (qF * sh).toInt().coerceIn(botRes, maxOf(botRes, sh - ph - topRes))
         val px = ((pF * sw).toInt() - pw / 2).coerceIn(0, sw - pw)
 
         wF = w.toFloat() / sw
         xF = x.toFloat() / sw
         bF = b.toFloat() / sh
+        qF = q.toFloat() / sh
         pF = (px + pw / 2).toFloat() / sw
         hDp = h / resources.displayMetrics.density
 
         lp.width = if (on) w else pw
         lp.height = curH
         lp.x = if (on) x else px
-        lp.y = sh - b - curH
+        lp.y = sh - (if (on) b else q) - curH
         barGroup.visibility = if (on) View.VISIBLE else View.GONE
         pill.visibility = if (on) View.GONE else View.VISIBLE
     }
@@ -417,6 +427,7 @@ class OverlayService : Service() {
             .putFloat("b", bF)
             .putFloat("h", hDp)
             .putFloat("p", pF)
+            .putFloat("q", qF)
             .apply()
     }
 
@@ -459,7 +470,7 @@ class OverlayService : Service() {
                     sx = e.rawX
                     sy = e.rawY
                     p0 = pF
-                    b0 = bF
+                    b0 = qF
                     moved = false
                 }
                 MotionEvent.ACTION_MOVE -> {
@@ -468,7 +479,7 @@ class OverlayService : Service() {
                     if (!moved && (abs(dx) > dp(8f) || abs(dy) > dp(8f))) moved = true
                     if (moved) {
                         pF = p0 + dx / screenW()
-                        bF = b0 + dy / screenH()
+                        qF = b0 + dy / screenH()
                         refresh()
                     }
                 }
