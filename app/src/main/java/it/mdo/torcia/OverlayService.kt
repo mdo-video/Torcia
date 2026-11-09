@@ -34,6 +34,7 @@ import com.google.android.material.card.MaterialCardView
 import com.google.android.material.color.DynamicColors
 import com.google.android.material.color.MaterialColors
 import com.google.android.material.slider.LabelFormatter
+import com.google.android.material.shape.ShapeAppearanceModel
 import com.google.android.material.slider.Slider
 import kotlin.math.abs
 
@@ -209,11 +210,11 @@ class OverlayService : Service() {
         r.addView(barGroup, FrameLayout.LayoutParams(-1, -1))
 
         val cap = MaterialCardView(ui, null, com.google.android.material.R.attr.materialCardViewFilledStyle)
-        cap.radius = dp(22f).toFloat()
+        cap.shapeAppearanceModel = ShapeAppearanceModel.builder().setAllCornerSizes(ShapeAppearanceModel.PILL).build()
         val row = LinearLayout(ui).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(4f), dp(4f), dp(12f), dp(4f))
+            setPadding(dp(6f), dp(4f), dp(14f), dp(4f))
         }
         cap.addView(row, FrameLayout.LayoutParams(-2, -2))
 
@@ -233,20 +234,20 @@ class OverlayService : Service() {
 
         row.addView(sunIcon(R.drawable.ic_sun_low, subtle), iconParams(8f))
         row.addView(
-            makeSlider(dim.toFloat()) {
+            sliderFrame(makeSlider(dim.toFloat()) {
                 dim = it
                 applyColors()
-            },
-            LinearLayout.LayoutParams(dp(120f), dp(36f))
+            }),
+            LinearLayout.LayoutParams(dp(120f), dp(40f))
         )
         row.addView(sunIcon(R.drawable.ic_sun, subtle), iconParams(0f))
         row.addView(sunIcon(R.drawable.ic_opacity, subtle), iconParams(12f))
         row.addView(
-            makeSlider(op.toFloat()) {
+            sliderFrame(makeSlider(op.toFloat()) {
                 op = it
                 applyColors()
-            },
-            LinearLayout.LayoutParams(dp(120f), dp(36f))
+            }),
+            LinearLayout.LayoutParams(dp(120f), dp(40f))
         )
 
         barGroup.addView(
@@ -260,7 +261,7 @@ class OverlayService : Service() {
 
         val top = handle(80, 16, 44, 4, Gravity.TOP or Gravity.CENTER_HORIZONTAL)
         top.setOnTouchListener(dragger { _, dy, s ->
-            val nh = (s.h + dy).coerceIn(dp(64f), maxOf(dp(64f), screenH() - s.b - topReserve()))
+            val nh = (s.h + dy).coerceIn(dp(68f), maxOf(dp(68f), screenH() - s.b - topReserve()))
             hDp = nh / resources.displayMetrics.density
         })
         val left = handle(20, 56, 4, 28, Gravity.START or Gravity.CENTER_VERTICAL)
@@ -321,6 +322,13 @@ class OverlayService : Service() {
     private fun iconParams(startDp: Float) =
         LinearLayout.LayoutParams(dp(18f), dp(28f)).apply { marginStart = dp(startDp) }
 
+    private fun sliderFrame(sl: Slider): FrameLayout {
+        val f = FrameLayout(ui)
+        f.clipChildren = false
+        f.addView(sl, FrameLayout.LayoutParams(-1, -2, Gravity.CENTER_VERTICAL))
+        return f
+    }
+
     private fun makeSlider(start: Float, onValue: (Int) -> Unit): Slider {
         val sl = Slider(ui)
         sl.valueFrom = 10f
@@ -330,6 +338,7 @@ class OverlayService : Service() {
         sl.labelBehavior = LabelFormatter.LABEL_GONE
         sl.isTickVisible = false
         sl.trackHeight = dp(10f)
+        sl.thumbHeight = dp(36f)
         sl.addOnChangeListener(Slider.OnChangeListener { _, v, _ -> onValue(v.toInt()) })
         sl.addOnSliderTouchListener(object : Slider.OnSliderTouchListener {
             override fun onStartTrackingTouch(x: Slider) {}
@@ -389,7 +398,7 @@ class OverlayService : Service() {
         val x = (xF * sw).toInt().coerceIn(0, sw - w)
         val topRes = topReserve()
         val botRes = bottomReserve()
-        val h = dp(hDp).coerceIn(minOf(dp(64f), sh), maxOf(dp(64f), sh - topRes - botRes))
+        val h = dp(hDp).coerceIn(minOf(dp(68f), sh), maxOf(dp(68f), sh - topRes - botRes))
         val pw = dp(36f)
         val ph = dp(36f)
         val curH = if (on) h else ph
